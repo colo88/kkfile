@@ -1,0 +1,58 @@
+name: Build and Push Base Image (Manual)
+
+# 触发条件：workflow_dispatch 表示手动触发
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Docker镜像标签 (例如: v1.0, latest)'
+        required: true
+        default: 'latest'
+        type: string
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    
+    steps:
+      # 1. 检出代码
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. 登录 Docker Hub
+      # 为什么：推送镜像必须先通过身份验证。使用 Secrets 保证安全。
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # 3. 设置 Docker Buildx
+      # 为什么：Buildx 是 Docker 的高级构建工具，支持缓存导出和多架构构建，
+      # 比标准 docker build 更快且功能更强。
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # 4. 构建并推送
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          # 上下文路径：非常关键！
+          # 指定为 docker/kkfileview-base 目录，因为构建所需文件都在该目录下
+          context: ./docker/kkfileview-base
+          
+          # Dockerfile 的路径
+          file: ./docker/kkfileview-base/Dockerfile
+          # 同时构建 AMD64 和 ARM64 版本的镜像
+          platforms: linux/amd64,linux/arm64
+          
+          # 开启推送功能
+          push: true
+          
+          # 动态生成的标签：用户名/镜像名:输入的标签
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/kkfileview-base:${{ inputs.image_tag }}
+          
+          # 开启缓存（最佳实践）
+          # 使用 GitHub Actions 缓存来加速后续的构建
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
